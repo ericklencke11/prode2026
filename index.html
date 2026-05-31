@@ -915,12 +915,16 @@ function toLocalInput(d){
 /* ======================= ARRANQUE ======================= */
 (function start(){
   if (!initSupabase()){ render(); return; }
+
+  let initialized = false;
+
   sb.auth.onAuthStateChange(async (event, session)=>{
     if (event==="PASSWORD_RECOVERY"){
-      // El usuario llegó desde el email de recuperación: mostrar pantalla de nueva contraseña
       UI.recovery=true; render(); return;
     }
-    if (UI.recovery) return; // no pisar la pantalla de reset con la sesión temporal
+    if (UI.recovery) return;
+    // Solo manejar cambios DESPUÉS de la inicialización
+    if (!initialized) return;
     if (session?.user){
       STATE.user = session.user;
       await ensureProfile();
@@ -930,12 +934,29 @@ function toLocalInput(d){
       STATE.user=null; STATE.profile=null; render();
     }
   });
-  // Estado inicial (por si ya hay sesión guardada)
+
+  // Inicialización principal
   sb.auth.getSession().then(async ({data})=>{
+    initialized = true;
     if (data.session?.user){
       STATE.user=data.session.user;
-      await ensureProfile(); await loadAll(); render();
-    } else { render(); }
+      await ensureProfile();
+      await loadAll();
+      render();
+    } else {
+      render();
+    }
+    // Ahora sí escuchar cambios futuros (logout, login desde otra pestaña)
+    sb.auth.onAuthStateChange(async (event, session)=>{
+      if (event==="PASSWORD_RECOVERY"){ UI.recovery=true; render(); return; }
+      if (UI.recovery) return;
+      if (session?.user){
+        STATE.user=session.user;
+        await ensureProfile(); await loadAll(); render();
+      } else {
+        STATE.user=null; STATE.profile=null; render();
+      }
+    });
   });
 })();
 </script>
