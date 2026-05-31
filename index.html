@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prode Mundial 2026 ⚽ (Multijugador)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: {
+    brand: { DEFAULT:'#16a34a', dark:'#15803d' }, ink:'#0f172a'
+  }}}};
+</script>
+<style>
+  body { -webkit-tap-highlight-color: transparent; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  input[type=number]{ -moz-appearance:textfield; }
+  .tab-active{ background:#16a34a; color:#fff; }
+  .fade-in{ animation:fade .25s ease; }
+  @keyframes fade{ from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+</style>
+</head>
+<body class="bg-slate-100 text-ink min-h-screen">
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  document.body.innerHTML = '<div style="padding:20px;font-family:monospace;background:#fee2e2;color:#991b1b;border-radius:8px;margin:20px">'
+    + '<b>ERROR JS:</b><br>' + msg + '<br>Línea: ' + line + '<br>Archivo: ' + src + '</div>';
+};
+window.addEventListener('unhandledrejection', function(e) {
+  document.body.innerHTML = '<div style="padding:20px;font-family:monospace;background:#fee2e2;color:#991b1b;border-radius:8px;margin:20px">'
+    + '<b>ERROR PROMESA:</b><br>' + (e.reason?.message || e.reason) + '</div>';
+});
+</script>
+
+<!-- =====================================================================
+   PASO 1: completá estas dos líneas con los datos de TU proyecto Supabase
+   (Settings -> API -> Project URL y anon public key)
+   ===================================================================== -->
+<script>
+  const SUPABASE_URL      = "https://lzgfktdzidrpvdehxxvx.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx6Z2ZrdGR6aWRycHZkZWh4eHZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxNjYzOTYsImV4cCI6MjA5NTc0MjM5Nn0.4wVQBH-7688_nYhSrNRZMKh7Y2Lwjn2piBBHbCKAwGM";
+</script>
+
+<div id="app"></div>
+
+<script>
+"use strict";
+
+/* ======================= DATOS ESTÁTICOS ======================= */
+const GROUPS = {
+  A:["México","Sudáfrica","Corea del Sur","República Checa"],
+  B:["Canadá","Bosnia y Herzegovina","Catar","Suiza"],
+  C:["Brasil","Marruecos","Haití","Escocia"],
+  D:["Estados Unidos","Paraguay","Australia","Turquía"],
+  E:["Alemania","Curazao","Costa de Marfil","Ecuador"],
+  F:["Países Bajos","Japón","Suecia","Túnez"],
+  G:["Bélgica","Egipto","Irán","Nueva Zelanda"],
+  H:["España","Cabo Verde","Arabia Saudita","Uruguay"],
+  I:["Francia","Senegal","Irak","Noruega"],
+  J:["Argentina","Argelia","Austria","Jordania"],
+  K:["Portugal","RD Congo","Uzbekistán","Colombia"],
+  L:["Inglaterra","Croacia","Ghana","Panamá"]
+};
+const ALL_TEAMS = Object.values(GROUPS).flat();
+const FLAGS = {
+  "México":"🇲🇽","Sudáfrica":"🇿🇦","Corea del Sur":"🇰🇷","República Checa":"🇨🇿",
+  "Canadá":"🇨🇦","Bosnia y Herzegovina":"🇧🇦","Catar":"🇶🇦","Suiza":"🇨🇭",
+  "Brasil":"🇧🇷","Marruecos":"🇲🇦","Haití":"🇭🇹","Escocia":"🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+  "Estados Unidos":"🇺🇸","Paraguay":"🇵🇾","Australia":"🇦🇺","Turquía":"🇹🇷",
+  "Alemania":"🇩🇪","Curazao":"🇨🇼","Costa de Marfil":"🇨🇮","Ecuador":"🇪🇨",
+  "Países Bajos":"🇳🇱","Japón":"🇯🇵","Suecia":"🇸🇪","Túnez":"🇹🇳",
+  "Bélgica":"🇧🇪","Egipto":"🇪🇬","Irán":"🇮🇷","Nueva Zelanda":"🇳🇿",
+  "España":"🇪🇸","Cabo Verde":"🇨🇻","Arabia Saudita":"🇸🇦","Uruguay":"🇺🇾",
+  "Francia":"🇫🇷","Senegal":"🇸🇳","Irak":"🇮🇶","Noruega":"🇳🇴",
+  "Argentina":"🇦🇷","Argelia":"🇩🇿","Austria":"🇦🇹","Jordania":"🇯🇴",
+  "Portugal":"🇵🇹","RD Congo":"🇨🇩","Uzbekistán":"🇺🇿","Colombia":"🇨🇴",
+  "Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Croacia":"🇭🇷","Ghana":"🇬🇭","Panamá":"🇵🇦"
+};
+const flag = t => FLAGS[t] || "🏳️";
+
+const KO_STAGES = [
+  { key:"dieciseisavos", label:"Dieciseisavos" },
+  { key:"octavos",       label:"Octavos" },
+  { key:"cuartos",       label:"Cuartos" },
+  { key:"semifinales",   label:"Semifinales" },
+  { key:"tercer",        label:"Tercer puesto" },
+  { key:"final",         label:"Final" }
+];
+
+/* Calendario REAL de fase de grupos (fuente: NBC Sports). Hora del Este (ET = -04:00). */
+const ET = "-04:00";
+const GROUP_FIXTURES = [
+  // [grupo, local, visitante, fecha-hora ET]
+  ["A","México","Sudáfrica","2026-06-11T15:00:00"],
+  ["A","Corea del Sur","República Checa","2026-06-11T22:00:00"],
+  ["A","República Checa","Sudáfrica","2026-06-18T12:00:00"],
+  ["A","México","Corea del Sur","2026-06-18T21:00:00"],
+  ["A","República Checa","México","2026-06-24T21:00:00"],
+  ["A","Sudáfrica","Corea del Sur","2026-06-24T21:00:00"],
+
+  ["B","Canadá","Bosnia y Herzegovina","2026-06-12T15:00:00"],
+  ["B","Catar","Suiza","2026-06-13T15:00:00"],
+  ["B","Suiza","Bosnia y Herzegovina","2026-06-18T15:00:00"],
+  ["B","Canadá","Catar","2026-06-18T18:00:00"],
+  ["B","Suiza","Canadá","2026-06-24T15:00:00"],
+  ["B","Bosnia y Herzegovina","Catar","2026-06-24T15:00:00"],
+
+  ["C","Brasil","Marruecos","2026-06-13T18:00:00"],
+  ["C","Haití","Escocia","2026-06-13T21:00:00"],
+  ["C","Escocia","Marruecos","2026-06-19T18:00:00"],
+  ["C","Brasil","Haití","2026-06-19T21:00:00"],
+  ["C","Escocia","Brasil","2026-06-24T18:00:00"],
+  ["C","Marruecos","Haití","2026-06-24T18:00:00"],
+
+  ["D","Estados Unidos","Paraguay","2026-06-12T21:00:00"],
+  ["D","Australia","Turquía","2026-06-13T00:00:00"],
+  ["D","Estados Unidos","Australia","2026-06-19T15:00:00"],
+  ["D","Turquía","Paraguay","2026-06-19T00:00:00"],
+  ["D","Turquía","Estados Unidos","2026-06-25T22:00:00"],
+  ["D","Paraguay","Australia","2026-06-25T22:00:00"],
+
+  ["E","Alemania","Curazao","2026-06-14T13:00:00"],
+  ["E","Costa de Marfil","Ecuador","2026-06-14T19:00:00"],
+  ["E","Alemania","Costa de Marfil","2026-06-20T16:00:00"],
+  ["E","Ecuador","Curazao","2026-06-20T20:00:00"],
+  ["E","Ecuador","Alemania","2026-06-25T16:00:00"],
+  ["E","Curazao","Costa de Marfil","2026-06-25T16:00:00"],
+
+  ["F","Países Bajos","Japón","2026-06-14T16:00:00"],
+  ["F","Suecia","Túnez","2026-06-14T22:00:00"],
+  ["F","Países Bajos","Suecia","2026-06-20T13:00:00"],
+  ["F","Túnez","Japón","2026-06-20T00:00:00"],
+  ["F","Japón","Suecia","2026-06-25T19:00:00"],
+  ["F","Túnez","Países Bajos","2026-06-25T19:00:00"],
+
+  ["G","Bélgica","Egipto","2026-06-15T15:00:00"],
+  ["G","Irán","Nueva Zelanda","2026-06-15T21:00:00"],
+  ["G","Bélgica","Irán","2026-06-21T15:00:00"],
+  ["G","Nueva Zelanda","Egipto","2026-06-21T21:00:00"],
+  ["G","Egipto","Irán","2026-06-26T23:00:00"],
+  ["G","Nueva Zelanda","Bélgica","2026-06-26T23:00:00"],
+
+  ["H","España","Cabo Verde","2026-06-15T12:00:00"],
+  ["H","Arabia Saudita","Uruguay","2026-06-15T18:00:00"],
+  ["H","España","Arabia Saudita","2026-06-21T12:00:00"],
+  ["H","Uruguay","Cabo Verde","2026-06-21T18:00:00"],
+  ["H","Cabo Verde","Arabia Saudita","2026-06-26T20:00:00"],
+  ["H","Uruguay","España","2026-06-26T20:00:00"],
+
+  ["I","Francia","Senegal","2026-06-16T15:00:00"],
+  ["I","Irak","Noruega","2026-06-16T18:00:00"],
+  ["I","Francia","Irak","2026-06-22T17:00:00"],
+  ["I","Noruega","Senegal","2026-06-22T20:00:00"],
+  ["I","Noruega","Francia","2026-06-26T15:00:00"],
+  ["I","Senegal","Irak","2026-06-26T15:00:00"],
+
+  ["J","Argentina","Argelia","2026-06-16T21:00:00"],
+  ["J","Austria","Jordania","2026-06-16T00:00:00"],
+  ["J","Argentina","Austria","2026-06-22T13:00:00"],
+  ["J","Jordania","Argelia","2026-06-22T23:00:00"],
+  ["J","Argelia","Austria","2026-06-27T22:00:00"],
+  ["J","Jordania","Argentina","2026-06-27T22:00:00"],
+
+  ["K","Portugal","RD Congo","2026-06-17T13:00:00"],
+  ["K","Uzbekistán","Colombia","2026-06-17T22:00:00"],
+  ["K","Portugal","Uzbekistán","2026-06-23T13:00:00"],
+  ["K","Colombia","RD Congo","2026-06-23T22:00:00"],
+  ["K","Colombia","Portugal","2026-06-27T19:30:00"],
+  ["K","RD Congo","Uzbekistán","2026-06-27T19:30:00"],
+
+  ["L","Inglaterra","Croacia","2026-06-17T16:00:00"],
+  ["L","Ghana","Panamá","2026-06-17T19:00:00"],
+  ["L","Inglaterra","Ghana","2026-06-23T16:00:00"],
+  ["L","Panamá","Croacia","2026-06-23T19:00:00"],
+  ["L","Panamá","Inglaterra","2026-06-27T17:00:00"],
+  ["L","Croacia","Ghana","2026-06-27T17:00:00"]
+];
+
+/* Eliminación directa: placeholders con fechas reales por ronda (el admin define equipos/horario exacto) */
+const KO_PLAN = [
+  { key:"dieciseisavos", count:16, start:"2026-06-28", perDay:3, time:"16:00" },
+  { key:"octavos",       count:8,  start:"2026-07-04", perDay:2, time:"16:00" },
+  { key:"cuartos",       count:4,  start:"2026-07-09", perDay:2, time:"16:00" },
+  { key:"semifinales",   count:2,  start:"2026-07-14", perDay:1, time:"16:00" },
+  { key:"tercer",        count:1,  start:"2026-07-18", perDay:1, time:"16:00" },
+  { key:"final",         count:1,  start:"2026-07-19", perDay:1, time:"15:00" }
+];
+
+function buildFixture(){
+  const rows = [];
+  // Grupos
+  const counter = {};
+  GROUP_FIXTURES.forEach(([grp, home, away, dt]) => {
+    counter[grp] = (counter[grp]||0)+1;
+    rows.push({ id:`G-${grp}-${counter[grp]}`, stage:"grupos", grp, home, away,
+                kickoff:`${dt}${ET}` });
+  });
+  // Eliminación
+  KO_PLAN.forEach(p => {
+    for (let i=1;i<=p.count;i++){
+      const d = new Date(p.start+"T00:00:00"+ET);
+      d.setDate(d.getDate() + Math.floor((i-1)/p.perDay));
+      const dateStr = d.toISOString().slice(0,10);
+      rows.push({ id:`K-${p.key}-${i}`, stage:p.key, grp:null,
+                  home:"Por definir", away:"Por definir",
+                  kickoff:`${dateStr}T${p.time}:00${ET}` });
+    }
+  });
+  return rows;
+}
+
+/* ======================= SUPABASE ======================= */
+let sb = null;
+function initSupabase(){
+  if (!SUPABASE_URL.startsWith("http") || SUPABASE_ANON_KEY.length < 20) return false;
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return true;
+}
+
+/* ======================= ESTADO ======================= */
+let STATE = {
+  user:null, profile:null,
+  matches:[], settings:null,
+  myPreds:{}, mySpecials:null,
+  profiles:[], leaderboard:[], stats:null
+};
+let UI = { tab:"partidos", filterStage:"grupos", filterGroup:"A", cmpMatch:null, recovery:false, detail:false };
+
+const HOUR = 3600*1000;
+const now = () => new Date();
+const $app = () => document.getElementById("app");
+
+/* ======================= HELPERS ======================= */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function isLocked(m){ return now().getTime() >= new Date(m.kickoff).getTime() - HOUR; }
+function specialsLocked(){
+  if (!STATE.settings) return false;
+  return now().getTime() >= new Date(STATE.settings.tournament_start).getTime() - HOUR;
+}
+function fmtDate(iso){
+  return new Date(iso).toLocaleString("es-AR",{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+}
+function scorePred(p, m){
+  if (!p || p.home==null || p.away==null) return 0;
+  if (m.real_home==null || m.real_away==null) return 0;
+  if (p.home===m.real_home && p.away===m.real_away) return 5;
+  if (Math.sign(p.home-p.away)===Math.sign(m.real_home-m.real_away)) return 3;
+  return 0;
+}
+function toast(msg, ok=true){
+  const t=document.createElement("div");
+  t.className=`fixed top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm font-semibold shadow-lg ${ok?'bg-brand':'bg-red-600'}`;
+  t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2200);
+}
+
+/* ======================= CARGA DE DATOS ======================= */
+async function ensureProfile(){
+  const uid = STATE.user.id;
+  let { data:prof } = await sb.from("profiles").select("*").eq("id",uid).maybeSingle();
+  if (!prof){
+    const username = STATE.user.user_metadata?.username || STATE.user.email.split("@")[0];
+    const { data, error } = await sb.from("profiles").insert({ id:uid, username }).select().single();
+    if (error){ console.error(error); }
+    prof = data;
+  }
+  STATE.profile = prof;
+}
+
+async function loadAll(){
+  const uid = STATE.user.id;
+  const [mRes, sRes, pRes, spRes, prRes, lbRes, statsRes] = await Promise.all([
+    sb.from("matches").select("*").order("kickoff",{ascending:true}),
+    sb.from("settings").select("*").eq("id",1).maybeSingle(),
+    sb.from("predictions").select("*").eq("user_id",uid),
+    sb.from("specials").select("*").eq("user_id",uid).maybeSingle(),
+    sb.from("profiles").select("*").order("username"),
+    sb.rpc("get_leaderboard"),
+    sb.rpc("get_group_stats")
+  ]);
+  STATE.matches = mRes.data || [];
+  STATE.settings = sRes.data || null;
+  STATE.myPreds = {};
+  (pRes.data||[]).forEach(p => STATE.myPreds[p.match_id] = p);
+  STATE.mySpecials = spRes.data || null;
+  STATE.profiles = prRes.data || [];
+  STATE.leaderboard = lbRes.data || [];
+  STATE.stats = statsRes.data || null;
+}
+
+async function refresh(){ await loadAll(); render(); }
+
+/* ======================= RENDER ROOT ======================= */
+function render(){
+  if (!sb){ renderConfigMissing(); return; }
+  if (UI.recovery){ renderResetPassword(); return; }
+  if (!STATE.user){ renderAuth(); return; }
+  renderShell();
+}
+
+/* ---- Pantalla: definir nueva contraseña (tras el email de recuperación) ---- */
+function renderResetPassword(){
+  $app().innerHTML = `
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 fade-in">
+      <div class="text-center mb-6">
+        <div class="text-5xl mb-2">🔑</div>
+        <h1 class="text-xl font-extrabold">Nueva contraseña</h1>
+        <p class="text-slate-500 text-sm">Elegí una contraseña nueva para tu cuenta.</p>
+      </div>
+      <form id="rpForm" class="space-y-3">
+        <input id="rpPass" type="password" placeholder="Nueva contraseña" autocomplete="new-password"
+          class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-brand outline-none" />
+        <input id="rpPass2" type="password" placeholder="Repetir contraseña" autocomplete="new-password"
+          class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-brand outline-none" />
+        <button id="rpBtn" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2.5 rounded-lg transition">Guardar contraseña</button>
+        <p id="rpMsg" class="text-center text-sm text-red-600 min-h-[1rem]"></p>
+      </form>
+    </div>
+  </div>`;
+  document.getElementById("rpForm").onsubmit = async (e)=>{
+    e.preventDefault();
+    const msg=document.getElementById("rpMsg"); msg.classList.replace("text-green-600","text-red-600"); msg.textContent="";
+    const p1=document.getElementById("rpPass").value, p2=document.getElementById("rpPass2").value;
+    if (p1.length<6){ msg.textContent="La contraseña debe tener al menos 6 caracteres."; return; }
+    if (p1!==p2){ msg.textContent="Las contraseñas no coinciden."; return; }
+    const btn=document.getElementById("rpBtn"); btn.disabled=true; const o=btn.textContent; btn.textContent="…";
+    const { error } = await sb.auth.updateUser({ password:p1 });
+    btn.disabled=false; btn.textContent=o;
+    if (error){ msg.textContent=traducirError(error.message); return; }
+    UI.recovery=false;
+    toast("Contraseña actualizada ✓");
+    // Ya hay sesión activa tras el reset: cargamos la app
+    const { data } = await sb.auth.getSession();
+    if (data.session?.user){ STATE.user=data.session.user; await ensureProfile(); await loadAll(); }
+    render();
+  };
+}
+
+/* ---- Config faltante ---- */
+function renderConfigMissing(){
+  $app().innerHTML = `
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-md bg-white rounded-2xl shadow-xl p-6">
+      <div class="text-4xl text-center mb-2">⚙️</div>
+      <h1 class="text-xl font-extrabold text-center mb-2">Falta configurar Supabase</h1>
+      <p class="text-sm text-slate-600">Editá <b>app.html</b> y completá <code class="bg-slate-100 px-1 rounded">SUPABASE_URL</code> y
+      <code class="bg-slate-100 px-1 rounded">SUPABASE_ANON_KEY</code> con los datos de tu proyecto
+      (Supabase → Settings → API). Mirá el archivo <b>LEEME.md</b>.</p>
+    </div>
+  </div>`;
+}
+
+/* ---- Auth ---- */
+function renderAuth(){
+  $app().innerHTML = `
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 fade-in">
+      <div class="text-center mb-6">
+        <div class="text-5xl mb-2">⚽🏆</div>
+        <h1 class="text-2xl font-extrabold">Prode Mundial 2026</h1>
+        <p class="text-slate-500 text-sm">Jugá con tus amigos desde el celu</p>
+      </div>
+      <div class="flex mb-4 bg-slate-100 rounded-lg p-1 text-sm font-semibold">
+        <button id="tabLogin" class="flex-1 py-2 rounded-md tab-active">Ingresar</button>
+        <button id="tabReg" class="flex-1 py-2 rounded-md">Registrarse</button>
+      </div>
+      <form id="authForm" class="space-y-3">
+        <input id="aUser" type="text" placeholder="Nombre de usuario (visible en la tabla)"
+          class="w-full border rounded-lg px-3 py-2.5 hidden focus:ring-2 focus:ring-brand outline-none" />
+        <input id="aEmail" type="email" placeholder="Email" autocomplete="email"
+          class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-brand outline-none" />
+        <input id="aPass" type="password" placeholder="Contraseña" autocomplete="current-password"
+          class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-brand outline-none" />
+        <button id="aBtn" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2.5 rounded-lg transition">Ingresar</button>
+        <p id="aMsg" class="text-center text-sm text-red-600 min-h-[1rem]"></p>
+      </form>
+      <button id="forgotBtn" class="w-full text-center text-sm text-slate-500 hover:text-brand mt-1">¿Olvidaste tu contraseña?</button>
+    </div>
+  </div>`;
+
+  let mode="login";
+  const userInput = document.getElementById("aUser");
+  const setMode = m => {
+    mode=m;
+    document.getElementById("tabLogin").classList.toggle("tab-active",m==="login");
+    document.getElementById("tabReg").classList.toggle("tab-active",m==="reg");
+    document.getElementById("aBtn").textContent = m==="login"?"Ingresar":"Crear cuenta";
+    userInput.classList.toggle("hidden", m!=="reg");
+    document.getElementById("forgotBtn").classList.toggle("hidden", m!=="login");
+    document.getElementById("aMsg").classList.replace("text-green-600","text-red-600");
+    document.getElementById("aMsg").textContent="";
+  };
+  document.getElementById("tabLogin").onclick=()=>setMode("login");
+  document.getElementById("tabReg").onclick=()=>setMode("reg");
+  document.getElementById("forgotBtn").onclick = async ()=>{
+    const msg=document.getElementById("aMsg");
+    const email=document.getElementById("aEmail").value.trim();
+    if (!email){ msg.classList.replace("text-green-600","text-red-600"); msg.textContent="Escribí tu email arriba y volvé a tocar."; return; }
+    const btn=document.getElementById("forgotBtn"); btn.disabled=true; const o=btn.textContent; btn.textContent="Enviando…";
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.href.split("#")[0] });
+    btn.disabled=false; btn.textContent=o;
+    if (error){ msg.classList.replace("text-green-600","text-red-600"); msg.textContent=traducirError(error.message); return; }
+    msg.classList.replace("text-red-600","text-green-600");
+    msg.textContent="Te mandamos un email con el enlace para restablecer la contraseña.";
+  };
+
+  document.getElementById("authForm").onsubmit = async (e)=>{
+    e.preventDefault();
+    const msg=document.getElementById("aMsg"); msg.textContent="";
+    const email=document.getElementById("aEmail").value.trim();
+    const pass=document.getElementById("aPass").value;
+    const username=userInput.value.trim();
+    const btn=document.getElementById("aBtn"); btn.disabled=true; const orig=btn.textContent; btn.textContent="...";
+    try{
+      if (mode==="reg"){
+        if (!username){ msg.textContent="Elegí un nombre de usuario."; return; }
+        const { data, error } = await sb.auth.signUp({ email, password:pass, options:{ data:{ username } }});
+        if (error) throw error;
+        if (!data.session){ msg.classList.replace("text-red-600","text-green-600");
+          msg.textContent="Cuenta creada. Revisá tu email para confirmar (o desactivá la confirmación en Supabase)."; return; }
+        // sesión activa: el onAuthStateChange se encarga del resto
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+        if (error) throw error;
+      }
+    }catch(err){ msg.textContent = traducirError(err.message); }
+    finally{ btn.disabled=false; btn.textContent=orig; }
+  };
+  setMode("login");
+}
+function traducirError(m){
+  if (/Invalid login/i.test(m)) return "Email o contraseña incorrectos.";
+  if (/already registered/i.test(m)) return "Ese email ya está registrado.";
+  if (/Password should/i.test(m)) return "La contraseña debe tener al menos 6 caracteres.";
+  return m;
+}
+
+/* ---- Shell ---- */
+function renderShell(){
+  const isAdmin = STATE.profile?.is_admin;
+  const tabs = [
+    {k:"partidos",label:"Partidos",icon:"⚽"},
+    {k:"especiales",label:"Especiales",icon:"⭐"},
+    {k:"tabla",label:"Tabla",icon:"🏆"},
+    {k:"stats",label:"Stats",icon:"📈"},
+    {k:"comparar",label:"Comparar",icon:"👥"}
+  ];
+  if (isAdmin) tabs.push({k:"admin",label:"Admin",icon:"🛠️"});
+
+  $app().innerHTML = `
+  <div class="max-w-2xl mx-auto pb-24">
+    <header class="bg-brand text-white px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">⚽</span>
+        <div>
+          <h1 class="font-extrabold leading-tight">Prode Mundial 2026</h1>
+          <p class="text-xs text-green-100">${escapeHtml(STATE.profile?.username||"")} ${isAdmin?"· admin":""}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="refreshBtn" title="Actualizar" class="text-sm bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg font-semibold">↻</button>
+        <button id="logoutBtn" class="text-sm bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg font-semibold">Salir</button>
+      </div>
+    </header>
+    <main id="content" class="p-4 fade-in"></main>
+    <nav class="fixed bottom-0 inset-x-0 bg-white border-t shadow-lg z-20">
+      <div class="max-w-2xl mx-auto grid" style="grid-template-columns:repeat(${tabs.length},minmax(0,1fr));">
+        ${tabs.map(t=>`<button data-tab="${t.k}" class="navbtn py-2.5 flex flex-col items-center gap-0.5 text-xs font-semibold ${UI.tab===t.k?'text-brand':'text-slate-400'}">
+          <span class="text-xl">${t.icon}</span>${t.label}</button>`).join("")}
+      </div>
+    </nav>
+  </div>`;
+
+  document.getElementById("refreshBtn").onclick = async ()=>{ await refresh(); toast("Actualizado"); };
+  document.getElementById("logoutBtn").onclick = async ()=>{ await sb.auth.signOut(); };
+  document.querySelectorAll(".navbtn").forEach(b=>b.onclick=()=>{ UI.tab=b.dataset.tab; render(); });
+
+  const c=document.getElementById("content");
+  if (UI.tab==="partidos")   renderPartidos(c);
+  if (UI.tab==="especiales") renderEspeciales(c);
+  if (UI.tab==="tabla")      renderTabla(c);
+  if (UI.tab==="stats")      renderStats(c);
+  if (UI.tab==="comparar")   renderComparar(c);
+  if (UI.tab==="admin")      renderAdmin(c);
+}
+
+/* ---- Partidos ---- */
+function renderPartidos(c){
+  const seeded = STATE.matches.length>0;
+  if (!seeded){
+    c.innerHTML = `<div class="bg-white rounded-xl shadow-sm p-6 text-center">
+      <p class="text-slate-500">Todavía no se cargó el fixture.</p>
+      ${STATE.profile?.is_admin ? `<button id="seedBtn" class="mt-3 bg-brand text-white font-bold px-4 py-2 rounded-lg">Inicializar fixture (104 partidos)</button>`
+        : `<p class="text-sm text-slate-400 mt-2">Esperá a que el administrador inicialice los partidos.</p>`}
+    </div>`;
+    const sb2=document.getElementById("seedBtn");
+    if (sb2) sb2.onclick = seedFixture;
+    return;
+  }
+
+  const stageFilters=[{k:"grupos",label:"Grupos"},...KO_STAGES.map(s=>({k:s.key,label:s.label}))];
+  let list = STATE.matches.filter(m=>m.stage===UI.filterStage);
+  if (UI.filterStage==="grupos") list=list.filter(m=>m.grp===UI.filterGroup);
+
+  c.innerHTML = `
+    <div class="flex gap-2 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+      ${stageFilters.map(s=>`<button data-stage="${s.k}" class="stagebtn whitespace-nowrap text-sm px-3 py-1.5 rounded-full font-semibold border ${UI.filterStage===s.k?'bg-brand text-white border-brand':'bg-white text-slate-600'}">${s.label}</button>`).join("")}
+    </div>
+    ${UI.filterStage==="grupos"?`<div class="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+      ${Object.keys(GROUPS).map(g=>`<button data-group="${g}" class="groupbtn w-9 h-9 flex-shrink-0 rounded-lg font-bold text-sm ${UI.filterGroup===g?'bg-ink text-white':'bg-white text-slate-600 border'}">${g}</button>`).join("")}
+    </div>`:``}
+    <div class="space-y-3">${list.map(matchCard).join("")}</div>`;
+
+  c.querySelectorAll(".stagebtn").forEach(b=>b.onclick=()=>{UI.filterStage=b.dataset.stage;render();});
+  c.querySelectorAll(".groupbtn").forEach(b=>b.onclick=()=>{UI.filterGroup=b.dataset.group;render();});
+  c.querySelectorAll("[data-save]").forEach(btn=>btn.onclick=()=>savePrediction(btn.dataset.save,btn));
+}
+
+function matchCard(m){
+  const locked=isLocked(m);
+  const pred=STATE.myPreds[m.id];
+  const hasResult=m.real_home!=null && m.real_away!=null;
+  const pts=hasResult?scorePred(pred,m):null;
+  const ptsBadge=pts!=null?`<span class="text-xs font-bold px-2 py-0.5 rounded-full ${pts===5?'bg-green-600 text-white':pts===3?'bg-amber-400 text-ink':'bg-slate-200 text-slate-500'}">${pts} pts</span>`:"";
+  const lockBadge=locked?`<span class="text-[11px] font-semibold text-red-500">🔒 Bloqueado</span>`:`<span class="text-[11px] font-semibold text-green-600">✏️ Editable</span>`;
+  const dis=locked?"disabled":"";
+  const hv=pred&&pred.home!=null?pred.home:"";
+  const av=pred&&pred.away!=null?pred.away:"";
+  const realLine=hasResult?`<div class="text-center text-xs text-slate-500 mt-2">Resultado real (90'): <b>${m.real_home} - ${m.real_away}</b></div>`:"";
+  return `
+  <div class="bg-white rounded-xl shadow-sm p-3">
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[11px] text-slate-400 font-semibold">${fmtDate(m.kickoff)}</span>
+      <div class="flex items-center gap-2">${ptsBadge}${lockBadge}</div>
+    </div>
+    <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <div class="text-right"><div class="text-sm font-semibold leading-tight">${escapeHtml(m.home)}</div><div class="text-2xl">${flag(m.home)}</div></div>
+      <div class="flex items-center gap-1">
+        <input id="h-${m.id}" type="number" min="0" max="99" value="${hv}" ${dis} class="w-12 h-12 text-center text-xl font-bold border rounded-lg ${locked?'bg-slate-100 text-slate-400':'focus:ring-2 focus:ring-brand'} outline-none" />
+        <span class="text-slate-300 font-bold">:</span>
+        <input id="a-${m.id}" type="number" min="0" max="99" value="${av}" ${dis} class="w-12 h-12 text-center text-xl font-bold border rounded-lg ${locked?'bg-slate-100 text-slate-400':'focus:ring-2 focus:ring-brand'} outline-none" />
+      </div>
+      <div class="text-left"><div class="text-2xl">${flag(m.away)}</div><div class="text-sm font-semibold leading-tight">${escapeHtml(m.away)}</div></div>
+    </div>
+    ${realLine}
+    ${!locked?`<button data-save="${m.id}" class="mt-3 w-full bg-brand hover:bg-brand-dark text-white text-sm font-bold py-2 rounded-lg transition">Guardar pronóstico</button>`
+             :`<div class="mt-3 text-center text-xs text-slate-400">Pronóstico cerrado · mirá "Comparar"</div>`}
+  </div>`;
+}
+
+async function savePrediction(id, btn){
+  const h=document.getElementById(`h-${id}`).value;
+  const a=document.getElementById(`a-${id}`).value;
+  btn.disabled=true;
+  try{
+    if (h===""||a===""){
+      await sb.from("predictions").delete().eq("user_id",STATE.user.id).eq("match_id",id);
+      delete STATE.myPreds[id];
+    } else {
+      const row={ user_id:STATE.user.id, match_id:id, home:parseInt(h,10), away:parseInt(a,10), updated_at:new Date().toISOString() };
+      const { error } = await sb.from("predictions").upsert(row,{onConflict:"user_id,match_id"});
+      if (error) throw error;
+      STATE.myPreds[id]=row;
+    }
+    btn.textContent="✓ Guardado"; btn.classList.add("bg-green-700");
+    setTimeout(()=>{btn.textContent="Guardar pronóstico";btn.classList.remove("bg-green-700");btn.disabled=false;},1200);
+  }catch(err){ btn.disabled=false; toast(/violates|policy|row-level/i.test(err.message)?"El partido ya está bloqueado.":err.message,false); }
+}
+
+/* ---- Especiales ---- */
+function renderEspeciales(c){
+  const locked=specialsLocked();
+  const sp=STATE.mySpecials||{champion:"",runner_up:"",scorer:""};
+  const st=STATE.settings||{};
+  const opt=(sel)=>ALL_TEAMS.map(t=>`<option value="${escapeHtml(t)}" ${sel===t?'selected':''}>${flag(t)} ${escapeHtml(t)}</option>`).join("");
+  const sc={
+    champion: st.champion && sp.champion===st.champion ? 15:0,
+    runner: st.runner_up && sp.runner_up===st.runner_up ? 10:0,
+    scorer: st.scorer && sp.scorer && sp.scorer.trim().toLowerCase()===st.scorer.trim().toLowerCase() ? 10:0
+  };
+  const hasAns = st.champion||st.runner_up||st.scorer;
+  c.innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm p-4 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="font-extrabold text-lg">⭐ Predicciones especiales</h2>
+        ${locked?`<span class="text-xs font-semibold text-red-500">🔒 Cerradas</span>`:`<span class="text-xs font-semibold text-green-600">✏️ Abiertas</span>`}
+      </div>
+      <p class="text-sm text-slate-500">Se bloquean 1 h antes del partido inaugural${st.tournament_start?`: <b>${fmtDate(st.tournament_start)}</b>`:""}.</p>
+      <div>
+        <label class="text-sm font-bold">🏆 Campeón <span class="text-slate-400 font-normal">(15 pts)</span></label>
+        <select id="spCh" ${locked?'disabled':''} class="w-full mt-1 border rounded-lg px-3 py-2.5 ${locked?'bg-slate-100 text-slate-400':''}"><option value="">— Elegir —</option>${opt(sp.champion)}</select>
+      </div>
+      <div>
+        <label class="text-sm font-bold">🥈 Subcampeón <span class="text-slate-400 font-normal">(10 pts)</span></label>
+        <select id="spRu" ${locked?'disabled':''} class="w-full mt-1 border rounded-lg px-3 py-2.5 ${locked?'bg-slate-100 text-slate-400':''}"><option value="">— Elegir —</option>${opt(sp.runner_up)}</select>
+      </div>
+      <div>
+        <label class="text-sm font-bold">👟 Máximo goleador <span class="text-slate-400 font-normal">(10 pts)</span></label>
+        <input id="spSc" type="text" value="${escapeHtml(sp.scorer||"")}" ${locked?'disabled':''} placeholder="Nombre del jugador" class="w-full mt-1 border rounded-lg px-3 py-2.5 ${locked?'bg-slate-100 text-slate-400':''}" />
+      </div>
+      ${!locked?`<button id="spSave" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-2.5 rounded-lg">Guardar especiales</button>`:``}
+      ${hasAns?`<div class="border-t pt-3 text-sm">
+        <p class="font-bold mb-1">Resultados oficiales:</p>
+        <p>🏆 ${st.champion?escapeHtml(st.champion):"—"} ${sc.champion?`<b class="text-green-600">+15</b>`:""}</p>
+        <p>🥈 ${st.runner_up?escapeHtml(st.runner_up):"—"} ${sc.runner?`<b class="text-green-600">+10</b>`:""}</p>
+        <p>👟 ${st.scorer?escapeHtml(st.scorer):"—"} ${sc.scorer?`<b class="text-green-600">+10</b>`:""}</p>
+        <p class="mt-2 font-extrabold">Total especiales: ${sc.champion+sc.runner+sc.scorer} pts</p>
+      </div>`:``}
+    </div>`;
+  const btn=document.getElementById("spSave");
+  if (btn) btn.onclick = async ()=>{
+    btn.disabled=true;
+    const row={ user_id:STATE.user.id, champion:document.getElementById("spCh").value||null,
+      runner_up:document.getElementById("spRu").value||null, scorer:document.getElementById("spSc").value.trim()||null,
+      updated_at:new Date().toISOString() };
+    const { error } = await sb.from("specials").upsert(row,{onConflict:"user_id"});
+    btn.disabled=false;
+    if (error){ toast(/policy|row-level/i.test(error.message)?"Las especiales ya están cerradas.":error.message,false); return; }
+    STATE.mySpecials=row; toast("Especiales guardadas"); render();
+  };
+}
+
+/* ---- Tabla ---- */
+function renderTabla(c){
+  const lb=STATE.leaderboard;
+  const medal=i=>i===0?"🥇":i===1?"🥈":i===2?"🥉":`<span class="text-slate-400 font-bold">${i+1}</span>`;
+  c.innerHTML = `
+    <h2 class="font-extrabold text-lg mb-3">🏆 Tabla de posiciones</h2>
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      ${lb.length===0?`<p class="p-6 text-center text-slate-400">Todavía no hay jugadores.</p>`:
+        lb.map((r,i)=>`<div class="flex items-center justify-between px-4 py-3 border-b last:border-0 ${r.username===STATE.profile?.username?'bg-green-50':''}">
+          <div class="flex items-center gap-3"><span class="w-7 text-center text-lg">${medal(i)}</span>
+            <div><div class="font-semibold">${escapeHtml(r.username)} ${r.is_admin?'<span class="text-[10px] text-slate-400">admin</span>':''}</div>
+            ${r.username===STATE.profile?.username?'<div class="text-[11px] text-brand font-semibold">Vos</div>':''}</div></div>
+          <div class="text-right"><div class="font-extrabold text-lg">${r.points}</div><div class="text-[10px] text-slate-400 -mt-1">puntos</div></div>
+        </div>`).join("")}
+    </div>
+    <button id="detailBtn" class="w-full mt-3 bg-ink text-white font-bold py-2.5 rounded-lg">📊 Ver mis puntos detallados</button>
+    <div id="detailBox" class="mt-3"></div>
+    <p class="text-xs text-slate-400 text-center mt-3">Se recalcula sola cuando el admin carga resultados. Tocá ↻ para refrescar.</p>`;
+
+  const dBtn=document.getElementById("detailBtn"), dBox=document.getElementById("detailBox");
+  dBtn.onclick=()=>{ UI.detail=!UI.detail; if (UI.detail){ dBox.innerHTML=detailHtml(); dBtn.textContent="📊 Ocultar puntos detallados"; } else { dBox.innerHTML=""; dBtn.textContent="📊 Ver mis puntos detallados"; } };
+  if (UI.detail){ dBox.innerHTML=detailHtml(); dBtn.textContent="📊 Ocultar puntos detallados"; }
+}
+
+/* Desglose partido por partido de MIS puntos */
+function detailHtml(){
+  const stageName=m=>m.stage==="grupos"?`Grupo ${m.grp}`:(KO_STAGES.find(x=>x.key===m.stage)?.label||m.stage);
+  // Solo partidos con resultado cargado, ordenados por fecha
+  const played=STATE.matches.filter(m=>m.real_home!=null && m.real_away!=null);
+  let matchTotal=0;
+  const rows=played.map(m=>{
+    const p=STATE.myPreds[m.id];
+    const pts=scorePred(p,m); matchTotal+=pts;
+    const mine=p?`${p.home}-${p.away}`:"sin cargar";
+    const color=pts===5?'bg-green-600 text-white':pts===3?'bg-amber-400 text-ink':'bg-slate-200 text-slate-500';
+    return `<div class="flex items-center justify-between px-3 py-2 border-b last:border-0 text-sm">
+      <div class="min-w-0"><div class="font-semibold truncate">${flag(m.home)} ${escapeHtml(m.home)} ${m.real_home}-${m.real_away} ${escapeHtml(m.away)} ${flag(m.away)}</div>
+        <div class="text-[11px] text-slate-400">${stageName(m)} · tu pronóstico: <b>${mine}</b></div></div>
+      <span class="ml-2 flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded-full ${color}">${pts}</span>
+    </div>`;
+  }).join("");
+
+  // Especiales
+  const st=STATE.settings||{}, sp=STATE.mySpecials||{};
+  const sChamp=st.champion&&sp.champion===st.champion?15:0;
+  const sRunner=st.runner_up&&sp.runner_up===st.runner_up?10:0;
+  const sScorer=st.scorer&&sp.scorer&&sp.scorer.trim().toLowerCase()===st.scorer.trim().toLowerCase()?10:0;
+  const specialTotal=sChamp+sRunner+sScorer;
+  const anySpecial=st.champion||st.runner_up||st.scorer;
+  const specialRow=(lbl,mine,pts,max)=>`<div class="flex items-center justify-between px-3 py-2 border-b last:border-0 text-sm">
+    <div><div class="font-semibold">${lbl}</div><div class="text-[11px] text-slate-400">tu elección: <b>${mine?escapeHtml(mine):"sin cargar"}</b></div></div>
+    <span class="ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${pts>0?'bg-green-600 text-white':'bg-slate-200 text-slate-500'}">${pts>0?'+'+pts:'0/'+max}</span>
+  </div>`;
+
+  return `
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden fade-in">
+      <div class="px-3 py-2 bg-slate-50 font-bold text-sm">Partidos con resultado (${played.length})</div>
+      ${played.length===0?`<p class="px-3 py-4 text-center text-slate-400 text-sm">Todavía no hay resultados cargados.</p>`:rows}
+      <div class="px-3 py-2 bg-slate-50 text-sm flex justify-between font-bold"><span>Subtotal partidos</span><span>${matchTotal} pts</span></div>
+      ${anySpecial?`
+        <div class="px-3 py-2 bg-slate-50 font-bold text-sm border-t">Especiales</div>
+        ${specialRow('🏆 Campeón', sp.champion, sChamp, 15)}
+        ${specialRow('🥈 Subcampeón', sp.runner_up, sRunner, 10)}
+        ${specialRow('👟 Goleador', sp.scorer, sScorer, 10)}
+        <div class="px-3 py-2 bg-slate-50 text-sm flex justify-between font-bold"><span>Subtotal especiales</span><span>${specialTotal} pts</span></div>`:``}
+      <div class="px-3 py-3 bg-brand text-white flex justify-between font-extrabold"><span>TOTAL</span><span>${matchTotal+specialTotal} pts</span></div>
+    </div>`;
+}
+
+/* ---- Estadísticas del grupo (agregadas, sin exponer apuestas) ---- */
+function renderStats(c){
+  const s = STATE.stats;
+  if (!s){ c.innerHTML=`<p class="text-center text-slate-400 py-8">Sin estadísticas todavía.</p>`; return; }
+
+  // Próximos partidos a bloquearse (los 3 más cercanos aún editables)
+  const upcoming = STATE.matches
+    .filter(m=>!isLocked(m))
+    .sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff))
+    .slice(0,3);
+
+  const card = (icon,label,val,sub="") => `
+    <div class="bg-white rounded-xl shadow-sm p-3 text-center">
+      <div class="text-2xl">${icon}</div>
+      <div class="text-2xl font-extrabold leading-tight">${val}</div>
+      <div class="text-[11px] text-slate-500 font-semibold">${label}</div>
+      ${sub?`<div class="text-[10px] text-slate-400">${sub}</div>`:""}
+    </div>`;
+
+  const pctPred = s.matches_total>0 ? Math.round(100*s.predictions_total/(s.players*s.matches_total||1)) : 0;
+
+  const champBlock = (s.specials_locked && (s.top_champions||[]).length)
+    ? `<div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="font-bold mb-2">🏆 Campeón más elegido</h3>
+        ${s.top_champions.map(t=>`<div class="flex justify-between py-1 border-b last:border-0 text-sm">
+          <span>${flag(t.team)} ${escapeHtml(t.team)}</span><span class="font-bold">${t.count} voto${t.count!=1?'s':''}</span></div>`).join("")}
+      </div>` : "";
+  const scorerBlock = (s.specials_locked && (s.top_scorers||[]).length)
+    ? `<div class="bg-white rounded-xl shadow-sm p-4">
+        <h3 class="font-bold mb-2">👟 Goleador más elegido</h3>
+        ${s.top_scorers.map(t=>`<div class="flex justify-between py-1 border-b last:border-0 text-sm">
+          <span>${escapeHtml(t.name)}</span><span class="font-bold">${t.count} voto${t.count!=1?'s':''}</span></div>`).join("")}
+      </div>` : "";
+  const specialsNote = !s.specials_locked
+    ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-700 text-xs">
+        🔒 Las tendencias de campeón y goleador se muestran recién cuando se cierran las especiales (1 h antes del partido inaugural), para no influir en las apuestas.</div>` : "";
+
+  c.innerHTML = `
+    <h2 class="font-extrabold text-lg mb-3">📈 Estadísticas del grupo</h2>
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      ${card("👥", "Jugadores", s.players)}
+      ${card("📝", "Pronósticos cargados", s.predictions_total, `${pctPred}% de cobertura`)}
+      ${card("⚽", "Partidos jugados", `${s.matches_played}/${s.matches_total}`)}
+      ${card("📊", "Promedio de puntos", s.avg_points)}
+      ${card("🥇", "Mejor puntaje", s.max_points)}
+      ${card("🎯", "Aciertos exactos", s.total_exacts, "(5 pts) en todo el grupo")}
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-3">
+      <h3 class="font-bold mb-2">⏰ Próximos a bloquearse</h3>
+      ${upcoming.length===0
+        ? `<p class="text-sm text-slate-400">No hay partidos próximos a bloquearse.</p>`
+        : upcoming.map(m=>`<div class="flex items-center justify-between py-1.5 border-b last:border-0 text-sm">
+            <span class="truncate">${flag(m.home)} ${escapeHtml(m.home)} vs ${escapeHtml(m.away)} ${flag(m.away)}</span>
+            <span class="text-[11px] text-slate-400 flex-shrink-0 ml-2">${fmtDate(m.kickoff)}</span>
+          </div>`).join("")}
+      <p class="text-[10px] text-slate-400 mt-2">Recordá: cada partido se cierra 1 h antes del inicio.</p>
+    </div>
+
+    ${champBlock}
+    ${scorerBlock?`<div class="mt-3">${scorerBlock}</div>`:""}
+    ${specialsNote?`<div class="mt-3">${specialsNote}</div>`:""}
+
+    <p class="text-xs text-slate-400 text-center mt-3">Todo agregado del grupo. Las apuestas individuales nunca se muestran acá. Tocá ↻ para refrescar.</p>`;
+}
+
+/* ---- Comparar ---- */
+function renderComparar(c){
+  if (STATE.matches.length===0){ c.innerHTML=`<p class="text-center text-slate-400 py-8">Aún no hay partidos.</p>`; return; }
+  if (!UI.cmpMatch) UI.cmpMatch=STATE.matches[0].id;
+  c.innerHTML = `
+    <h2 class="font-extrabold text-lg mb-1">👥 Transparencia y comparación</h2>
+    <p class="text-sm text-slate-500 mb-3">Los pronósticos ajenos se revelan <b>cuando el partido se bloquea</b> (1 h antes). Antes, sólo ves el tuyo.</p>
+    <select id="cmpSel" class="w-full mt-1 mb-4 border rounded-lg px-3 py-2.5 bg-white">
+      ${STATE.matches.map(m=>`<option value="${m.id}" ${UI.cmpMatch===m.id?'selected':''}>${matchLabel(m)}</option>`).join("")}
+    </select>
+    <div id="cmpOut" class="text-center text-slate-400 py-6">Cargando…</div>`;
+  const sel=document.getElementById("cmpSel");
+  sel.onchange=()=>{ UI.cmpMatch=sel.value; drawCompare(); };
+  drawCompare();
+}
+function matchLabel(m){
+  const s=m.stage==="grupos"?`Grupo ${m.grp}`:(KO_STAGES.find(x=>x.key===m.stage)?.label||m.stage);
+  return `${flag(m.home)} ${m.home} vs ${m.away} ${flag(m.away)} · ${s}`;
+}
+async function drawCompare(){
+  const out=document.getElementById("cmpOut");
+  const m=STATE.matches.find(x=>x.id===UI.cmpMatch);
+  const locked=isLocked(m);
+  if (!locked){
+    const mine=STATE.myPreds[m.id];
+    out.innerHTML=`<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-sm">
+      🔒 Partido no bloqueado todavía. Los pronósticos se revelan 1 h antes del inicio.
+      <div class="mt-2 text-ink">Tu pronóstico: <b>${mine?`${mine.home} - ${mine.away}`:"sin cargar"}</b></div></div>`;
+    return;
+  }
+  // Trae predicciones del partido (RLS deja ver sólo las de partidos bloqueados)
+  const { data } = await sb.from("predictions").select("user_id,home,away").eq("match_id",m.id);
+  const byUser={}; (data||[]).forEach(p=>byUser[p.user_id]=p);
+  const hasResult=m.real_home!=null && m.real_away!=null;
+  const rows=STATE.profiles.map(pf=>{
+    const p=byUser[pf.id];
+    return { name:pf.username, txt:p?`${p.home} - ${p.away}`:"—", pts:hasResult&&p?scorePred(p,m):null };
+  });
+  out.className="";
+  out.innerHTML=`
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-3 text-center">
+      <div class="text-sm font-bold">${matchLabel(m)}</div>
+      ${hasResult?`<div class="text-2xl font-extrabold mt-1">${m.real_home} - ${m.real_away}</div><div class="text-xs text-slate-400">resultado real (90')</div>`:`<div class="text-xs text-slate-400 mt-1">Sin resultado cargado</div>`}
+    </div>
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+      ${rows.map(r=>`<div class="flex items-center justify-between px-4 py-2.5 border-b last:border-0">
+        <span class="font-semibold">${escapeHtml(r.name)}</span>
+        <div class="flex items-center gap-3"><span class="font-bold text-lg">${r.txt}</span>
+        ${r.pts!=null?`<span class="text-xs font-bold px-2 py-0.5 rounded-full ${r.pts===5?'bg-green-600 text-white':r.pts===3?'bg-amber-400 text-ink':'bg-slate-200 text-slate-500'}">${r.pts}</span>`:''}</div>
+      </div>`).join("")}
+    </div>`;
+}
+
+/* ---- Admin ---- */
+function renderAdmin(c){
+  if (!STATE.profile?.is_admin){ c.innerHTML=`<p class="text-center text-slate-400 py-8">Solo administradores.</p>`; return; }
+  const st=STATE.settings||{};
+  const startVal = st.tournament_start ? toLocalInput(new Date(st.tournament_start)) : "";
+  const stageFilters=[{k:"grupos",label:"Grupos"},...KO_STAGES.map(s=>({k:s.key,label:s.label}))];
+  let list=STATE.matches.filter(m=>m.stage===UI.filterStage);
+  if (UI.filterStage==="grupos") list=list.filter(m=>m.grp===UI.filterGroup);
+
+  c.innerHTML = `
+    <h2 class="font-extrabold text-lg mb-3">🛠️ Administrador</h2>
+    ${STATE.matches.length===0?`<button id="seedBtn" class="w-full mb-4 bg-ink text-white font-bold py-2.5 rounded-lg">Inicializar fixture (104 partidos)</button>`:``}
+
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-4 space-y-3">
+      <h3 class="font-bold">Configuración + resultados especiales</h3>
+      <label class="text-xs font-bold text-slate-500">Fecha/hora del partido inaugural</label>
+      <input id="cfgStart" type="datetime-local" value="${startVal}" class="w-full border rounded-lg px-3 py-2" />
+      <label class="text-xs font-bold text-slate-500">🏆 Campeón</label>
+      <select id="cfgCh" class="w-full border rounded-lg px-3 py-2"><option value="">—</option>${ALL_TEAMS.map(t=>`<option ${st.champion===t?'selected':''}>${t}</option>`).join("")}</select>
+      <label class="text-xs font-bold text-slate-500">🥈 Subcampeón</label>
+      <select id="cfgRu" class="w-full border rounded-lg px-3 py-2"><option value="">—</option>${ALL_TEAMS.map(t=>`<option ${st.runner_up===t?'selected':''}>${t}</option>`).join("")}</select>
+      <label class="text-xs font-bold text-slate-500">👟 Goleador</label>
+      <input id="cfgSc" type="text" value="${escapeHtml(st.scorer||"")}" class="w-full border rounded-lg px-3 py-2" placeholder="Nombre del jugador" />
+      <button id="cfgSave" class="w-full bg-brand text-white font-bold py-2.5 rounded-lg">Guardar y recalcular</button>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm p-4">
+      <h3 class="font-bold mb-2">Cargar resultados (90' + añadido)</h3>
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+        ${stageFilters.map(s=>`<button data-stage="${s.k}" class="astage whitespace-nowrap text-sm px-3 py-1.5 rounded-full font-semibold border ${UI.filterStage===s.k?'bg-brand text-white border-brand':'bg-white text-slate-600'}">${s.label}</button>`).join("")}
+      </div>
+      ${UI.filterStage==="grupos"?`<div class="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+        ${Object.keys(GROUPS).map(g=>`<button data-group="${g}" class="agroup w-9 h-9 flex-shrink-0 rounded-lg font-bold text-sm ${UI.filterGroup===g?'bg-ink text-white':'bg-white text-slate-600 border'}">${g}</button>`).join("")}
+      </div>`:``}
+      <div class="space-y-3">${list.map(adminRow).join("")}</div>
+    </div>`;
+
+  const seedB=document.getElementById("seedBtn"); if (seedB) seedB.onclick=seedFixture;
+  c.querySelectorAll(".astage").forEach(b=>b.onclick=()=>{UI.filterStage=b.dataset.stage;render();});
+  c.querySelectorAll(".agroup").forEach(b=>b.onclick=()=>{UI.filterGroup=b.dataset.group;render();});
+
+  document.getElementById("cfgSave").onclick = async ()=>{
+    const row={ id:1, tournament_start:new Date(document.getElementById("cfgStart").value).toISOString(),
+      champion:document.getElementById("cfgCh").value||null, runner_up:document.getElementById("cfgRu").value||null,
+      scorer:document.getElementById("cfgSc").value.trim()||null };
+    const { error } = await sb.from("settings").upsert(row,{onConflict:"id"});
+    if (error){ toast(error.message,false); return; }
+    await refresh(); toast("Configuración guardada");
+  };
+
+  c.querySelectorAll("[data-amatch]").forEach(btn=>btn.onclick=()=>saveAdminMatch(btn.dataset.amatch,btn));
+}
+
+function adminRow(m){
+  const isKO=m.stage!=="grupos";
+  const teamSel=(pre,val)=>`<select id="${pre}-${m.id}" class="border rounded px-2 py-1 text-sm w-full"><option value="Por definir" ${val==="Por definir"?'selected':''}>Por definir</option>${ALL_TEAMS.map(t=>`<option ${val===t?'selected':''}>${t}</option>`).join("")}</select>`;
+  return `<div class="border rounded-lg p-3">
+    ${isKO?`<div class="grid grid-cols-2 gap-2 mb-2">
+      <div><label class="text-[10px] font-bold text-slate-400">Local</label>${teamSel('ah',m.home)}</div>
+      <div><label class="text-[10px] font-bold text-slate-400">Visitante</label>${teamSel('aa',m.away)}</div></div>
+      <label class="text-[10px] font-bold text-slate-400">Fecha/hora</label>
+      <input id="adt-${m.id}" type="datetime-local" value="${toLocalInput(new Date(m.kickoff))}" class="border rounded px-2 py-1 text-sm w-full mb-2" />`:``}
+    <div class="flex items-center justify-between gap-2">
+      <span class="text-sm font-semibold truncate">${flag(m.home)} ${escapeHtml(m.home)}</span>
+      <div class="flex items-center gap-1 flex-shrink-0">
+        <input id="rh-${m.id}" type="number" min="0" value="${m.real_home??""}" class="w-11 h-9 text-center border rounded font-bold" />
+        <span class="text-slate-300">:</span>
+        <input id="ra-${m.id}" type="number" min="0" value="${m.real_away??""}" class="w-11 h-9 text-center border rounded font-bold" />
+      </div>
+      <span class="text-sm font-semibold truncate text-right">${escapeHtml(m.away)} ${flag(m.away)}</span>
+    </div>
+    <button data-amatch="${m.id}" class="mt-2 w-full bg-brand text-white text-sm font-bold py-1.5 rounded-lg">Guardar</button>
+  </div>`;
+}
+
+async function saveAdminMatch(id, btn){
+  btn.disabled=true;
+  const rh=document.getElementById(`rh-${id}`).value;
+  const ra=document.getElementById(`ra-${id}`).value;
+  const patch={ real_home: rh===""?null:parseInt(rh,10), real_away: ra===""?null:parseInt(ra,10) };
+  const home=document.getElementById(`ah-${id}`), away=document.getElementById(`aa-${id}`), dt=document.getElementById(`adt-${id}`);
+  if (home) patch.home=home.value;
+  if (away) patch.away=away.value;
+  if (dt && dt.value) patch.kickoff=new Date(dt.value).toISOString();
+  const { error } = await sb.from("matches").update(patch).eq("id",id);
+  btn.disabled=false;
+  if (error){ toast(error.message,false); return; }
+  await refresh(); toast("Guardado");
+}
+
+async function seedFixture(){
+  const rows=buildFixture();
+  const { error } = await sb.from("matches").upsert(rows,{onConflict:"id"});
+  if (error){ toast(error.message,false); return; }
+  await refresh(); toast("Fixture cargado");
+}
+
+function toLocalInput(d){
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* ======================= ARRANQUE ======================= */
+(function start(){
+  if (!initSupabase()){ render(); return; }
+  sb.auth.onAuthStateChange(async (event, session)=>{
+    if (event==="PASSWORD_RECOVERY"){
+      // El usuario llegó desde el email de recuperación: mostrar pantalla de nueva contraseña
+      UI.recovery=true; render(); return;
+    }
+    if (UI.recovery) return; // no pisar la pantalla de reset con la sesión temporal
+    if (session?.user){
+      STATE.user = session.user;
+      await ensureProfile();
+      await loadAll();
+      render();
+    } else {
+      STATE.user=null; STATE.profile=null; render();
+    }
+  });
+  // Estado inicial (por si ya hay sesión guardada)
+  sb.auth.getSession().then(async ({data})=>{
+    if (data.session?.user){
+      STATE.user=data.session.user;
+      await ensureProfile(); await loadAll(); render();
+    } else { render(); }
+  });
+})();
+</script>
+</body>
+</html>
+
