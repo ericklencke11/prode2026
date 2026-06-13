@@ -225,7 +225,7 @@ let STATE = {
   myPreds:{}, mySpecials:null,
   profiles:[], leaderboard:[], stats:null
 };
-let UI = { tab:"partidos", filterStage:"grupos", filterGroup:"A", cmpMatch:null, recovery:false, detail:false };
+let UI = { tab:"hoy", filterStage:"grupos", filterGroup:"A", cmpMatch:null, recovery:false, detail:false };
 
 const HOUR = 3600*1000;
 const now = () => new Date();
@@ -441,6 +441,7 @@ function traducirError(m){
 function renderShell(){
   const isAdmin = STATE.profile?.is_admin;
   const tabs = [
+    {k:"hoy",label:"Hoy",icon:"📅"},
     {k:"partidos",label:"Partidos",icon:"⚽"},
     {k:"especiales",label:"Especiales",icon:"⭐"},
     {k:"tabla",label:"Tabla",icon:"🏆"},
@@ -478,12 +479,51 @@ function renderShell(){
   document.querySelectorAll(".navbtn").forEach(b=>b.onclick=()=>{ UI.tab=b.dataset.tab; render(); });
 
   const c=document.getElementById("content");
+  if (UI.tab==="hoy")        renderHoy(c);
   if (UI.tab==="partidos")   renderPartidos(c);
   if (UI.tab==="especiales") renderEspeciales(c);
   if (UI.tab==="tabla")      renderTabla(c);
   if (UI.tab==="stats")      renderStats(c);
   if (UI.tab==="comparar")   renderComparar(c);
   if (UI.tab==="admin")      renderAdmin(c);
+}
+
+/* ---- Hoy (partidos del día) ---- */
+function renderHoy(c){
+  const seeded = STATE.matches.length>0;
+  if (!seeded){
+    c.innerHTML = `<div class="bg-white rounded-xl shadow-sm p-6 text-center">
+      <p class="text-slate-500">Todavía no se cargó el fixture.</p>
+    </div>`;
+    return;
+  }
+  const hoy = now();
+  const sameDay = (iso)=>{ const d=new Date(iso);
+    return d.getFullYear()===hoy.getFullYear() && d.getMonth()===hoy.getMonth() && d.getDate()===hoy.getDate(); };
+  const list = STATE.matches.filter(m=>sameDay(m.kickoff)).sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff));
+  const fechaHoy = hoy.toLocaleDateString("es-AR",{weekday:'long',day:'2-digit',month:'long'});
+
+  if (list.length===0){
+    const next = STATE.matches.filter(m=>new Date(m.kickoff)>=hoy)
+      .sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff)).slice(0,3);
+    c.innerHTML = `
+      <div class="mb-3">
+        <h2 class="text-lg font-extrabold text-ink capitalize">📅 Hoy · ${fechaHoy}</h2>
+        <p class="text-sm text-slate-500">No hay partidos hoy. ¡Día libre! 🎉</p>
+      </div>
+      ${next.length?`<p class="text-xs font-bold text-slate-400 mb-2 mt-4">PRÓXIMOS PARTIDOS</p>
+      <div class="space-y-3">${next.map(matchCard).join("")}</div>`:""}`;
+    c.querySelectorAll("[data-save]").forEach(btn=>btn.onclick=()=>savePrediction(btn.dataset.save,btn));
+    return;
+  }
+
+  c.innerHTML = `
+    <div class="mb-3">
+      <h2 class="text-lg font-extrabold text-ink capitalize">📅 Hoy · ${fechaHoy}</h2>
+      <p class="text-sm text-slate-500">${list.length} partido${list.length>1?'s':''} · cargá tu pronóstico acá mismo</p>
+    </div>
+    <div class="space-y-3">${list.map(matchCard).join("")}</div>`;
+  c.querySelectorAll("[data-save]").forEach(btn=>btn.onclick=()=>savePrediction(btn.dataset.save,btn));
 }
 
 /* ---- Partidos ---- */
