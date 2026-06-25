@@ -236,6 +236,9 @@ function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 function isLocked(m){ return now().getTime() >= new Date(m.kickoff).getTime() - HOUR; }
 function specialsLocked(){
   if (!STATE.settings) return false;
+  // Override temporal por usuario (lo setea el admin en la base): si está vigente, abre.
+  const ov = STATE.profile?.specials_unlock_until;
+  if (ov && now().getTime() < new Date(ov).getTime()) return false;
   return now().getTime() >= new Date(STATE.settings.tournament_start).getTime() - HOUR;
 }
 function fmtDate(iso){
