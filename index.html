@@ -225,7 +225,7 @@ let STATE = {
   myPreds:{}, mySpecials:null,
   profiles:[], leaderboard:[], stats:null
 };
-let UI = { tab:"hoy", filterStage:"grupos", filterGroup:"A", cmpMatch:null, recovery:false, detail:false };
+let UI = { tab:"hoy", filterStage:"grupos", filterGroup:"A", cmpFilter:"hoy", cmpGroup:"A", cmpMatch:null, recovery:false, detail:false };
 
 const HOUR = 3600*1000;
 const now = () => new Date();
@@ -501,31 +501,39 @@ function renderHoy(c){
     return;
   }
   const hoy = now();
-  const sameDay = (iso)=>{ const d=new Date(iso);
-    return d.getFullYear()===hoy.getFullYear() && d.getMonth()===hoy.getMonth() && d.getDate()===hoy.getDate(); };
-  const list = STATE.matches.filter(m=>sameDay(m.kickoff)).sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff));
+  const sameDay = (iso,ref)=>{ const d=new Date(iso);
+    return d.getFullYear()===ref.getFullYear() && d.getMonth()===ref.getMonth() && d.getDate()===ref.getDate(); };
+  const list = STATE.matches.filter(m=>sameDay(m.kickoff,hoy)).sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff));
   const fechaHoy = hoy.toLocaleDateString("es-AR",{weekday:'long',day:'2-digit',month:'long'});
 
-  if (list.length===0){
-    const next = STATE.matches.filter(m=>new Date(m.kickoff)>=hoy)
-      .sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff)).slice(0,3);
-    c.innerHTML = `
-      <div class="mb-3">
-        <h2 class="text-lg font-extrabold text-ink capitalize">📅 Hoy · ${fechaHoy}</h2>
-        <p class="text-sm text-slate-500">No hay partidos hoy. ¡Día libre! 🎉</p>
-      </div>
-      ${next.length?`<p class="text-xs font-bold text-slate-400 mb-2 mt-4">PRÓXIMOS PARTIDOS</p>
-      <div class="space-y-3">${next.map(matchCard).join("")}</div>`:""}`;
-    c.querySelectorAll("[data-save]").forEach(btn=>btn.onclick=()=>savePrediction(btn.dataset.save,btn));
-    return;
+  // Próximos partidos: el primer día (a partir de mañana) que tenga partidos.
+  const mañana = new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate()+1,0,0,0,0);
+  const futuros = STATE.matches.filter(m=>new Date(m.kickoff)>=mañana)
+    .sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff));
+  let prox=[], fechaProx="";
+  if (futuros.length){
+    const primerDia = new Date(futuros[0].kickoff);
+    prox = futuros.filter(m=>sameDay(m.kickoff,primerDia));
+    fechaProx = primerDia.toLocaleDateString("es-AR",{weekday:'long',day:'2-digit',month:'long'});
   }
 
-  c.innerHTML = `
-    <div class="mb-3">
-      <h2 class="text-lg font-extrabold text-ink capitalize">📅 Hoy · ${fechaHoy}</h2>
-      <p class="text-sm text-slate-500">${list.length} partido${list.length>1?'s':''} · cargá tu pronóstico acá mismo</p>
-    </div>
-    <div class="space-y-3">${list.map(matchCard).join("")}</div>`;
+  const hoyHtml = list.length
+    ? `<div class="mb-3">
+        <h2 class="text-lg font-extrabold text-ink capitalize">📅 Hoy · ${fechaHoy}</h2>
+        <p class="text-sm text-slate-500">${list.length} partido${list.length>1?'s':''} · cargá tu pronóstico acá mismo</p>
+      </div>
+      <div class="space-y-3">${list.map(matchCard).join("")}</div>`
+    : `<div class="mb-3">
+        <h2 class="text-lg font-extrabold text-ink capitalize">📅 Hoy · ${fechaHoy}</h2>
+        <p class="text-sm text-slate-500">No hay partidos hoy. ¡Día libre! 🎉</p>
+      </div>`;
+
+  const proxHtml = prox.length
+    ? `<p class="text-xs font-bold text-slate-400 mb-2 mt-6 uppercase">Próximos partidos · <span class="capitalize">${fechaProx}</span></p>
+      <div class="space-y-3">${prox.map(matchCard).join("")}</div>`
+    : "";
+
+  c.innerHTML = hoyHtml + proxHtml;
   c.querySelectorAll("[data-save]").forEach(btn=>btn.onclick=()=>savePrediction(btn.dataset.save,btn));
 }
 
@@ -801,19 +809,44 @@ function renderStats(c){
 }
 
 /* ---- Comparar ---- */
+function compararList(){
+  if (UI.cmpFilter==="hoy"){
+    const hoy=now();
+    const sameDay=(iso)=>{ const d=new Date(iso);
+      return d.getFullYear()===hoy.getFullYear() && d.getMonth()===hoy.getMonth() && d.getDate()===hoy.getDate(); };
+    return STATE.matches.filter(m=>sameDay(m.kickoff)).sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff));
+  }
+  let l=STATE.matches.filter(m=>m.stage===UI.cmpFilter);
+  if (UI.cmpFilter==="grupos") l=l.filter(m=>m.grp===UI.cmpGroup);
+  return l.sort((a,b)=>new Date(a.kickoff)-new Date(b.kickoff));
+}
 function renderComparar(c){
   if (STATE.matches.length===0){ c.innerHTML=`<p class="text-center text-slate-400 py-8">Aún no hay partidos.</p>`; return; }
-  if (!UI.cmpMatch) UI.cmpMatch=STATE.matches[0].id;
+  const filtros=[{k:"hoy",label:"Hoy"},{k:"grupos",label:"Grupos"},...KO_STAGES.map(s=>({k:s.key,label:s.label}))];
+  const list=compararList();
+  // Mantené una selección válida dentro del filtro actual.
+  if (!list.some(m=>m.id===UI.cmpMatch)) UI.cmpMatch = list.length ? list[0].id : null;
+
   c.innerHTML = `
     <h2 class="font-extrabold text-lg mb-1">👥 Transparencia y comparación</h2>
     <p class="text-sm text-slate-500 mb-3">Los pronósticos ajenos se revelan <b>cuando el partido se bloquea</b> (1 h antes). Antes, sólo ves el tuyo.</p>
-    <select id="cmpSel" class="w-full mt-1 mb-4 border rounded-lg px-3 py-2.5 bg-white">
-      ${STATE.matches.map(m=>`<option value="${m.id}" ${UI.cmpMatch===m.id?'selected':''}>${matchLabel(m)}</option>`).join("")}
-    </select>
-    <div id="cmpOut" class="text-center text-slate-400 py-6">Cargando…</div>`;
+    <div class="flex gap-2 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+      ${filtros.map(f=>`<button data-cf="${f.k}" class="cfbtn whitespace-nowrap text-sm px-3 py-1.5 rounded-full font-semibold border ${UI.cmpFilter===f.k?'bg-brand text-white border-brand':'bg-white text-slate-600'}">${f.label}</button>`).join("")}
+    </div>
+    ${UI.cmpFilter==="grupos"?`<div class="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+      ${Object.keys(GROUPS).map(g=>`<button data-cg="${g}" class="cgbtn w-9 h-9 flex-shrink-0 rounded-lg font-bold text-sm ${UI.cmpGroup===g?'bg-ink text-white':'bg-white text-slate-600 border'}">${g}</button>`).join("")}
+    </div>`:``}
+    ${list.length
+      ? `<select id="cmpSel" class="w-full mt-1 mb-4 border rounded-lg px-3 py-2.5 bg-white">
+          ${list.map(m=>`<option value="${m.id}" ${UI.cmpMatch===m.id?'selected':''}>${matchLabel(m)}</option>`).join("")}
+        </select>
+        <div id="cmpOut" class="text-center text-slate-400 py-6">Cargando…</div>`
+      : `<p class="text-center text-slate-400 py-8">${UI.cmpFilter==="hoy"?"No hay partidos hoy.":"No hay partidos en este filtro."}</p>`}`;
+
+  c.querySelectorAll(".cfbtn").forEach(b=>b.onclick=()=>{ UI.cmpFilter=b.dataset.cf; UI.cmpMatch=null; render(); });
+  c.querySelectorAll(".cgbtn").forEach(b=>b.onclick=()=>{ UI.cmpGroup=b.dataset.cg; UI.cmpMatch=null; render(); });
   const sel=document.getElementById("cmpSel");
-  sel.onchange=()=>{ UI.cmpMatch=sel.value; drawCompare(); };
-  drawCompare();
+  if (sel){ sel.onchange=()=>{ UI.cmpMatch=sel.value; drawCompare(); }; drawCompare(); }
 }
 function matchLabel(m){
   const s=m.stage==="grupos"?`Grupo ${m.grp}`:(KO_STAGES.find(x=>x.key===m.stage)?.label||m.stage);
