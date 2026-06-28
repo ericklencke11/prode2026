@@ -978,6 +978,19 @@ function renderAdmin(c){
   };
 
   c.querySelectorAll("[data-amatch]").forEach(btn=>btn.onclick=()=>saveAdminMatch(btn.dataset.amatch,btn));
+
+  // "¿Quién avanza?": volver a tocar la opción ya elegida la desmarca (toggle) + resaltado.
+  c.querySelectorAll('input[type="radio"][name^="win-"]').forEach(r=>{
+    r.addEventListener("mousedown", ()=>{ r._was = r.checked; });
+    r.addEventListener("click", ()=>{
+      if (r._was) r.checked = false;
+      document.querySelectorAll(`input[name="${r.name}"]`).forEach(x=>{
+        const lab=x.closest(".adv-opt");
+        lab.classList.toggle("bg-green-50", x.checked);
+        lab.classList.toggle("border-green-500", x.checked);
+      });
+    });
+  });
 }
 
 function adminRow(m){
@@ -1041,18 +1054,26 @@ async function saveAdminMatch(id, btn){
   const { error } = await sb.from("matches").update(patch).eq("id",id);
   if (error){ btn.disabled=false; toast(error.message,false); return; }
 
-  // Propagar el ganador (y el perdedor, en semis) a la ronda siguiente del cuadro.
-  const nx = winnerTeam ? KO_NEXT[id] : null;
+  // Propagar al cuadro: con ganador lo manda a la fase siguiente; sin ganador, limpia ese cruce.
+  const nx = isKO ? KO_NEXT[id] : null;
+  let propagated=false;
   if (nx){
-    const ups=[ sb.from("matches").update({[nx.win.s]:winnerTeam}).eq("id",nx.win.m) ];
-    if (nx.lose) ups.push( sb.from("matches").update({[nx.lose.s]:loserTeam}).eq("id",nx.lose.m) );
+    const ups=[];
+    if (winnerTeam){
+      ups.push( sb.from("matches").update({[nx.win.s]:winnerTeam}).eq("id",nx.win.m) );
+      if (nx.lose) ups.push( sb.from("matches").update({[nx.lose.s]:loserTeam}).eq("id",nx.lose.m) );
+      propagated=true;
+    } else {
+      ups.push( sb.from("matches").update({[nx.win.s]:"Por definir"}).eq("id",nx.win.m) );
+      if (nx.lose) ups.push( sb.from("matches").update({[nx.lose.s]:"Por definir"}).eq("id",nx.lose.m) );
+    }
     const perr=(await Promise.all(ups)).find(r=>r.error);
-    if (perr){ btn.disabled=false; await refresh(); toast("Guardado, pero falló armar la próxima fase: "+perr.error.message,false); return; }
+    if (perr){ btn.disabled=false; await refresh(); toast("Guardado, pero falló actualizar la próxima fase: "+perr.error.message,false); return; }
   }
 
   btn.disabled=false;
   await refresh();
-  toast(nx ? "Guardado · próxima fase actualizada ✅" : "Guardado");
+  toast(propagated ? "Guardado · próxima fase actualizada ✅" : "Guardado");
 }
 
 async function seedFixture(){
