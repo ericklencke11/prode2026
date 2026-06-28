@@ -620,7 +620,7 @@ function matchCard(m){
   const dis=locked?"disabled":"";
   const hv=pred&&pred.home!=null?pred.home:"";
   const av=pred&&pred.away!=null?pred.away:"";
-  const realLine=hasResult?`<div class="text-center text-xs text-slate-500 mt-2">Resultado real (90'): <b>${m.real_home} - ${m.real_away}</b></div>`:"";
+  const realLine=hasResult?`<div class="text-center text-xs text-slate-500 mt-2">Resultado real (${m.stage==="grupos"?"90'":"120'"}): <b>${m.real_home} - ${m.real_away}</b></div>`:"";
   return `
   <div class="bg-white rounded-xl shadow-sm p-3">
     <div class="flex items-center justify-between mb-2">
@@ -916,7 +916,7 @@ async function drawCompare(){
   out.innerHTML=`
     <div class="bg-white rounded-xl shadow-sm p-4 mb-3 text-center">
       <div class="text-sm font-bold">${matchLabel(m)}</div>
-      ${hasResult?`<div class="text-2xl font-extrabold mt-1">${m.real_home} - ${m.real_away}</div><div class="text-xs text-slate-400">resultado real (90')</div>`:`<div class="text-xs text-slate-400 mt-1">Sin resultado cargado</div>`}
+      ${hasResult?`<div class="text-2xl font-extrabold mt-1">${m.real_home} - ${m.real_away}</div><div class="text-xs text-slate-400">resultado real (${m.stage==="grupos"?"90'":"120'"})</div>`:`<div class="text-xs text-slate-400 mt-1">Sin resultado cargado</div>`}
     </div>
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
       ${rows.map(r=>`<div class="flex items-center justify-between px-4 py-2.5 border-b last:border-0">
@@ -954,7 +954,7 @@ function renderAdmin(c){
     </div>
 
     <div class="bg-white rounded-xl shadow-sm p-4">
-      <h3 class="font-bold mb-2">Cargar resultados (90' + añadido)</h3>
+      <h3 class="font-bold mb-2">Cargar resultados <span class="font-normal text-slate-400 text-sm">(grupos: 90' · eliminatoria: 120')</span></h3>
       <div class="flex gap-2 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
         ${stageFilters.map(s=>`<button data-stage="${s.k}" class="astage whitespace-nowrap text-sm px-3 py-1.5 rounded-full font-semibold border ${UI.filterStage===s.k?'bg-brand text-white border-brand':'bg-white text-slate-600'}">${s.label}</button>`).join("")}
       </div>
@@ -1012,7 +1012,7 @@ function adminRow(m){
       <span class="text-sm font-semibold truncate text-right">${escapeHtml(m.away)} ${flag(m.away)}</span>
     </div>
     ${isKO?`<div class="mt-2 pt-2 border-t">
-      <label class="text-[10px] font-bold text-slate-400">✅ ¿Quién avanza de fase? <span class="font-normal">(define empates por penales)</span></label>
+      <label class="text-[10px] font-bold text-slate-400">✅ ¿Quién avanza de fase? <span class="font-normal">(si tras los 120' empatan, define penales)</span></label>
       <div class="grid grid-cols-2 gap-2 mt-1">
         <label class="adv-opt flex items-center gap-1.5 border rounded px-2 py-1.5 text-sm cursor-pointer ${m.winner&&m.winner===m.home?'bg-green-50 border-green-500':''}">
           <input type="radio" name="win-${m.id}" value="home" ${m.winner&&m.winner===m.home?'checked':''}/> <span class="truncate">${flag(m.home)} ${escapeHtml(m.home)}</span></label>
