@@ -88,6 +88,47 @@ const KO_STAGES = [
   { key:"final",         label:"Final" }
 ];
 
+/* ---- Cuadro de eliminatoria (bracket) ----
+   A qué partido y posición (home/away) avanza el GANADOR de cada cruce.
+   Las semifinales además mandan al PERDEDOR al partido por el tercer puesto.
+   El mapa respeta cómo se cargaron los 16avos en la base (ver foto del cuadro). */
+const KO_NEXT = {
+  // 16avos -> octavos
+  "K-dieciseisavos-3":  { win:{m:"K-octavos-1",s:"home"} },  // Alemania/Paraguay
+  "K-dieciseisavos-5":  { win:{m:"K-octavos-1",s:"away"} },  // Francia/Suecia
+  "K-dieciseisavos-2":  { win:{m:"K-octavos-2",s:"home"} },  // Sudáfrica/Canadá
+  "K-dieciseisavos-6":  { win:{m:"K-octavos-2",s:"away"} },  // Países Bajos/Marruecos
+  "K-dieciseisavos-13": { win:{m:"K-octavos-3",s:"home"} },  // Portugal/Croacia
+  "K-dieciseisavos-14": { win:{m:"K-octavos-3",s:"away"} },  // España/Austria
+  "K-dieciseisavos-9":  { win:{m:"K-octavos-4",s:"home"} },  // Estados Unidos/Bosnia
+  "K-dieciseisavos-16": { win:{m:"K-octavos-4",s:"away"} },  // Bélgica/Senegal
+  "K-dieciseisavos-1":  { win:{m:"K-octavos-5",s:"home"} },  // Brasil/Japón
+  "K-dieciseisavos-4":  { win:{m:"K-octavos-5",s:"away"} },  // Costa de Marfil/Noruega
+  "K-dieciseisavos-8":  { win:{m:"K-octavos-6",s:"home"} },  // México/Ecuador
+  "K-dieciseisavos-11": { win:{m:"K-octavos-6",s:"away"} },  // Inglaterra/RD Congo
+  "K-dieciseisavos-7":  { win:{m:"K-octavos-7",s:"home"} },  // Argentina/Cabo Verde
+  "K-dieciseisavos-12": { win:{m:"K-octavos-7",s:"away"} },  // Australia/Egipto
+  "K-dieciseisavos-15": { win:{m:"K-octavos-8",s:"home"} },  // Suiza/Argelia
+  "K-dieciseisavos-10": { win:{m:"K-octavos-8",s:"away"} },  // Colombia/Ghana
+  // octavos -> cuartos
+  "K-octavos-1": { win:{m:"K-cuartos-1",s:"home"} },
+  "K-octavos-2": { win:{m:"K-cuartos-1",s:"away"} },
+  "K-octavos-3": { win:{m:"K-cuartos-2",s:"home"} },
+  "K-octavos-4": { win:{m:"K-cuartos-2",s:"away"} },
+  "K-octavos-5": { win:{m:"K-cuartos-3",s:"home"} },
+  "K-octavos-6": { win:{m:"K-cuartos-3",s:"away"} },
+  "K-octavos-7": { win:{m:"K-cuartos-4",s:"home"} },
+  "K-octavos-8": { win:{m:"K-cuartos-4",s:"away"} },
+  // cuartos -> semifinales
+  "K-cuartos-1": { win:{m:"K-semifinales-1",s:"home"} },
+  "K-cuartos-2": { win:{m:"K-semifinales-1",s:"away"} },
+  "K-cuartos-3": { win:{m:"K-semifinales-2",s:"home"} },
+  "K-cuartos-4": { win:{m:"K-semifinales-2",s:"away"} },
+  // semifinales -> final (ganador) y tercer puesto (perdedor)
+  "K-semifinales-1": { win:{m:"K-final-1",s:"home"}, lose:{m:"K-tercer-1",s:"home"} },
+  "K-semifinales-2": { win:{m:"K-final-1",s:"away"}, lose:{m:"K-tercer-1",s:"away"} }
+};
+
 /* Calendario REAL de fase de grupos (fuente: NBC Sports). Hora del Este (ET = -04:00). */
 const ET = "-04:00";
 const GROUP_FIXTURES = [
@@ -957,6 +998,15 @@ function adminRow(m){
       </div>
       <span class="text-sm font-semibold truncate text-right">${escapeHtml(m.away)} ${flag(m.away)}</span>
     </div>
+    ${isKO?`<div class="mt-2 pt-2 border-t">
+      <label class="text-[10px] font-bold text-slate-400">✅ ¿Quién avanza de fase? <span class="font-normal">(define empates por penales)</span></label>
+      <div class="grid grid-cols-2 gap-2 mt-1">
+        <label class="adv-opt flex items-center gap-1.5 border rounded px-2 py-1.5 text-sm cursor-pointer ${m.winner&&m.winner===m.home?'bg-green-50 border-green-500':''}">
+          <input type="radio" name="win-${m.id}" value="home" ${m.winner&&m.winner===m.home?'checked':''}/> <span class="truncate">${flag(m.home)} ${escapeHtml(m.home)}</span></label>
+        <label class="adv-opt flex items-center gap-1.5 border rounded px-2 py-1.5 text-sm cursor-pointer ${m.winner&&m.winner===m.away?'bg-green-50 border-green-500':''}">
+          <input type="radio" name="win-${m.id}" value="away" ${m.winner&&m.winner===m.away?'checked':''}/> <span class="truncate">${flag(m.away)} ${escapeHtml(m.away)}</span></label>
+      </div>
+    </div>`:``}
     <button data-amatch="${m.id}" class="mt-2 w-full bg-brand text-white text-sm font-bold py-1.5 rounded-lg">Guardar</button>
   </div>`;
 }
@@ -970,10 +1020,39 @@ async function saveAdminMatch(id, btn){
   if (home) patch.home=home.value;
   if (away) patch.away=away.value;
   if (dt && dt.value) patch.kickoff=new Date(dt.value).toISOString();
+
+  // Eliminatoria: las tarjetas KO tienen selector de equipos (home != null).
+  const isKO = !!home;
+  const winSel = document.querySelector(`input[name="win-${id}"]:checked`);
+  const winSide = winSel ? winSel.value : null;                // 'home' | 'away' | null
+  const effHome = home ? home.value : null, effAway = away ? away.value : null;
+  let winnerTeam=null, loserTeam=null;
+  if (isKO){
+    const hasResult = patch.real_home!=null && patch.real_away!=null;
+    if (hasResult && !winSide){ btn.disabled=false; toast("Marcá quién avanza de fase.",false); return; }
+    if (winSide){
+      winnerTeam = winSide==="home" ? effHome : effAway;
+      loserTeam  = winSide==="home" ? effAway : effHome;
+      if (winnerTeam==="Por definir"){ btn.disabled=false; toast("Definí los equipos antes de marcar quién avanza.",false); return; }
+    }
+    patch.winner = winnerTeam;   // null mientras no se marque
+  }
+
   const { error } = await sb.from("matches").update(patch).eq("id",id);
+  if (error){ btn.disabled=false; toast(error.message,false); return; }
+
+  // Propagar el ganador (y el perdedor, en semis) a la ronda siguiente del cuadro.
+  const nx = winnerTeam ? KO_NEXT[id] : null;
+  if (nx){
+    const ups=[ sb.from("matches").update({[nx.win.s]:winnerTeam}).eq("id",nx.win.m) ];
+    if (nx.lose) ups.push( sb.from("matches").update({[nx.lose.s]:loserTeam}).eq("id",nx.lose.m) );
+    const perr=(await Promise.all(ups)).find(r=>r.error);
+    if (perr){ btn.disabled=false; await refresh(); toast("Guardado, pero falló armar la próxima fase: "+perr.error.message,false); return; }
+  }
+
   btn.disabled=false;
-  if (error){ toast(error.message,false); return; }
-  await refresh(); toast("Guardado");
+  await refresh();
+  toast(nx ? "Guardado · próxima fase actualizada ✅" : "Guardado");
 }
 
 async function seedFixture(){
